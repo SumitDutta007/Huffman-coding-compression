@@ -1,228 +1,218 @@
-# Huffman Coding Compression (C++)
+# Huffman Compression (C++)
 
-A command-line file compressor and decompressor built in modern C++ using **Huffman coding**, a lossless, prefix-based entropy encoding algorithm. It works on any file type (text, source code, logs, binaries) and restores the original data byte-for-byte.
+A lightweight command-line tool that compresses and decompresses files using **Huffman coding**, a lossless, prefix-free entropy encoding algorithm. The entire implementation lives in a single C++ source file with no external dependencies.
 
 ![Language](https://img.shields.io/badge/language-C%2B%2B17-blue)
-![Build](https://img.shields.io/badge/build-CMake-success)
-![License](https://img.shields.io/badge/license-MIT-green)
+![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20Windows-lightgrey)
 
 ---
 
 ## Table of Contents
 
 - [Problem Statement](#problem-statement)
-- [How It Works](#how-it-works)
 - [Features](#features)
+- [How It Works](#how-it-works)
 - [Project Structure](#project-structure)
 - [Getting Started](#getting-started)
 - [Usage](#usage)
-- [Compressed File Format](#compressed-file-format)
-- [Example](#example)
+- [Compressed File Format (`.abiz`)](#compressed-file-format-abiz)
+- [Code Overview](#code-overview)
 - [Complexity](#complexity)
-- [Testing](#testing)
-- [Limitations](#limitations)
+- [Known Limitations](#known-limitations)
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
-- [License](#license)
+- [Author](#author)
 
 ---
 
 ## Problem Statement
 
-Most files store every symbol (byte) using a fixed number of bits (8), even when some symbols appear far more often than others. This wastes space. Huffman coding addresses this by assigning **shorter bit codes to frequent symbols** and **longer codes to rare ones**, reducing total file size without losing any information.
-
-## How It Works
-
-**Compression**
-
-1. **Read** the input file and count the frequency of each byte (0–255).
-2. **Build** a min-heap (priority queue) of leaf nodes, one per distinct byte.
-3. **Merge** the two lowest-frequency nodes repeatedly into a parent node until a single root remains. This produces the Huffman tree.
-4. **Generate codes** by traversing the tree (left edge = `0`, right edge = `1`). Each leaf's path is its prefix-free code.
-5. **Encode** the input by replacing each byte with its code and packing the bits into bytes.
-6. **Write** a header (metadata + frequency table) followed by the packed bitstream.
-
-**Decompression**
-
-1. **Read** the header and rebuild the identical Huffman tree from the stored frequency table.
-2. **Decode** the bitstream by walking the tree from the root, emitting a byte each time a leaf is reached.
-3. **Stop** after the original number of bytes has been written, ignoring padding bits.
-
-Because no code is a prefix of another, decoding is unambiguous.
+Standard file storage uses a fixed 8 bits per byte, regardless of how often each byte value actually occurs. Huffman coding removes that waste by assigning **shorter bit patterns to frequent bytes** and **longer patterns to rare ones**. The result is a smaller file that decompresses back to the original, byte for byte.
 
 ## Features
 
-- Lossless compression and decompression of any file type
-- Handles edge cases: empty files, single-symbol files, and large files
-- Deterministic tree construction, so compressor and decompressor always agree
-- Bit-level I/O with correct padding handling
-- Magic number and size validation to detect invalid or corrupted input
-- Reports compression ratio after each run
-- Clean, modular code with no external dependencies
+- Lossless compression and decompression of any file type (text, source code, logs, binaries)
+- Custom `.abiz` output format with a self-contained header, so no external dictionary is needed
+- Correct handling of single-symbol files (assigned a 1-bit code)
+- Bit-level packing with padding tracked in the header
+- Pre-compression size estimate printed before encoding begins
+- Live progress percentage and timing for both operations
+- Single source file, easy to read, build, and extend
+
+## How It Works
+
+### Compression (`-c`)
+
+1. **Measure** the input file size (64-bit safe).
+2. **Count** the frequency of every byte value (0-255).
+3. **Build the Huffman tree.** Leaf nodes are sorted by frequency, and the two lowest-count nodes are repeatedly merged into a parent until one root remains.
+4. **Generate codes** by walking the tree (left edge = `0`, right edge = `1`) and store them in a lookup table. The total encoded size in bits is calculated at the same time.
+5. **Compute padding** needed to round the bitstream up to a whole byte.
+6. **Write the header** (symbol table and padding), followed by the packed bitstream (most significant bit first).
+
+### Decompression (`-dc`)
+
+1. **Read the header** and rebuild the Huffman tree from the stored codes.
+2. **Walk the bitstream** bit by bit from the root of the tree. Each time a leaf is reached, its byte is written out and traversal restarts at the root.
+3. **Stop at the final byte** using the stored padding value so the trailing filler bits are ignored.
+
+Because no code is a prefix of another, decoding is unambiguous.
 
 ## Project Structure
 
 ```
-huffman-compression/
-├── CMakeLists.txt
+.
+├── .gitignore                 # Excludes executables and .vscode
 ├── README.md
-├── LICENSE
-├── include/
-│   ├── huffman_tree.hpp      # Node definition, tree construction, code generation
-│   ├── bit_io.hpp            # BitWriter / BitReader utilities
-│   └── codec.hpp             # compress() / decompress() public API
-├── src/
-│   ├── main.cpp              # CLI entry point
-│   ├── huffman_tree.cpp
-│   ├── bit_io.cpp
-│   └── codec.cpp
-├── tests/
-│   ├── test_roundtrip.cpp    # compress -> decompress -> compare
-│   └── data/                 # sample files for testing
-└── docs/
-    └── format.md             # (optional) detailed file format notes
+└── huffman-compression.cpp    # Complete implementation (compressor + decompressor + CLI)
 ```
-
-> Adjust this tree to match your actual repository layout.
 
 ## Getting Started
 
 ### Prerequisites
 
-- A C++17 (or newer) compiler: GCC 9+, Clang 10+, or MSVC 2019+
-- CMake 3.15+ (optional; a plain `g++` command also works)
+- A C++17 compatible compiler (GCC 7+, Clang 5+, or MinGW-w64). C++17 is required because the decompressor uses structured bindings.
 
-### Build with CMake
-
-```bash
-git clone https://github.com/<your-username>/huffman-compression.git
-cd huffman-compression
-
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-```
-
-The executable will be at `build/huffman`.
-
-### Build without CMake
+### Clone and Build
 
 ```bash
-g++ -std=c++17 -O2 -Iinclude src/*.cpp -o huffman
+git clone https://github.com/SumitDutta007/<repo-name>.git
+cd <repo-name>
+
+g++ -std=c++17 -O2 huffman-compression.cpp -o huffman
 ```
+
+On Windows (MinGW), the output will be `huffman.exe`.
+
+> **Note:** The code uses `ftello64` to read file sizes, which is available on Linux and MinGW. On macOS, where `ftello64` is not provided, replace it with `ftello`.
 
 ## Usage
 
 ```bash
 # Compress
-./huffman compress <input_file> <output_file>
+./huffman -c <file_to_compress>
 
 # Decompress
-./huffman decompress <input_file> <output_file>
+./huffman -dc <file_to_decompress>.abiz
 ```
 
-| Command      | Description                                   |
-|--------------|-----------------------------------------------|
-| `compress`   | Compresses `<input_file>` into `<output_file>`   |
-| `decompress` | Restores the original file from a compressed one |
+| Flag  | Description                                                    |
+|-------|----------------------------------------------------------------|
+| `-c`  | Compress the given file. Output is `<filename>.abiz`           |
+| `-dc` | Decompress a `.abiz` file. Output is `output<filename>` (the `.abiz` extension is removed) |
 
-### Verify integrity
+### Naming Convention
+
+| Command                     | Output file       |
+|-----------------------------|-------------------|
+| `./huffman -c notes.txt`    | `notes.txt.abiz`  |
+| `./huffman -dc notes.txt.abiz` | `outputnotes.txt` |
+
+The `output` prefix prevents the decompressed file from overwriting your original.
+
+### Verify the Round Trip
 
 ```bash
-./huffman compress sample.txt sample.huf
-./huffman decompress sample.huf restored.txt
-cmp sample.txt restored.txt && echo "Round-trip OK"
+./huffman -c notes.txt
+./huffman -dc notes.txt.abiz
+cmp notes.txt outputnotes.txt && echo "Round-trip OK"
 ```
 
-## Compressed File Format
-
-| Section            | Size                | Purpose                                              |
-|--------------------|---------------------|------------------------------------------------------|
-| Magic number       | 4 bytes             | Identifies the file as this format (e.g. `HUFF`)     |
-| Original size      | 8 bytes             | Number of bytes in the uncompressed data             |
-| Symbol count       | 2 bytes             | Number of distinct bytes stored in the table         |
-| Frequency table    | 5 bytes per symbol  | 1-byte symbol + 4-byte frequency                     |
-| Encoded bitstream  | Variable            | Packed Huffman codes; final byte is zero-padded      |
-
-Storing the original size lets the decoder ignore padding bits and detect truncated files.
-
-> Update this table if your header layout differs.
-
-## Example
+### Sample Console Output
 
 ```text
-$ ./huffman compress war_and_peace.txt war_and_peace.huf
-Original size   : 3,359,372 bytes
-Compressed size : 1,921,408 bytes
-Ratio           : 57.2%  (42.8% saved)
-
-$ ./huffman decompress war_and_peace.huf restored.txt
-Decompressed 3,359,372 bytes successfully.
+notes.txt
+Original File: 1048576 bytes
+Compressed File Size (without header): 612345 bytes
+Padding size: 3
+100% completed
+Compression Time: 0.42s
 ```
 
-*Figures above are illustrative. Replace them with results from your own benchmarks.*
+*Values are illustrative. Your results depend on the input data.*
+
+> **Tip:** Run the tool from the directory containing the file. The decompressor prepends `output` to the full path you pass in, so paths with folders (e.g. `data/notes.txt.abiz`) will not produce the expected output location.
+
+## Compressed File Format (`.abiz`)
+
+```
++-------------------------------+
+| Unique symbol count - 1       |  1 byte  (0 means 1 symbol, 255 means 256)
++-------------------------------+
+| For each unique symbol:       |
+|   Symbol                      |  1 byte
+|   Code length (L)             |  1 byte
+|   Huffman code                |  L bytes, stored as ASCII '0' / '1'
++-------------------------------+
+| Padding bits                  |  1 byte  (unused bits in the last data byte)
++-------------------------------+
+| Encoded bitstream             |  N bytes, MSB first, zero-padded at the end
++-------------------------------+
+```
+
+- **Best-case header:** about 5 bytes (file contains a single distinct byte value).
+- **Worst-case header:** roughly 32 KB, which only occurs with a highly skewed tree where code lengths approach 255 bits.
+- Codes are stored as readable characters rather than packed bits. This keeps the header simple to parse at the cost of extra size on files with many distinct symbols.
+
+## Code Overview
+
+| Component                      | Responsibility                                                         |
+|--------------------------------|------------------------------------------------------------------------|
+| `Huffman::Node`                | Tree node holding a byte, its count, and left/right children           |
+| `Huffman::HuffmanValue[256]`   | Lookup table mapping each byte to its binary code string               |
+| `Utility::get_file_size`       | Returns the file size as a 64-bit value                                |
+| `Utility::Inorder`             | Debug helper that prints each character with its count and code        |
+| `CompressUtility::parse_file`  | Builds the byte-frequency map                                          |
+| `CompressUtility::generate_huffman_tree` | Constructs the tree by repeatedly merging the lowest-count nodes |
+| `CompressUtility::store_huffman_value`   | Fills the code table and returns the encoded size in bits    |
+| `CompressUtility::generate_header`       | Serializes the symbol table and padding                      |
+| `CompressUtility::compress`    | Writes the header and the bit-packed payload                           |
+| `DecompressUtility::decode_header`       | Reads the header and rebuilds the tree                       |
+| `DecompressUtility::decompress` | Decodes the bitstream back to the original bytes                      |
 
 ## Complexity
 
-Let *n* be the input size in bytes and *k* the number of distinct symbols (at most 256).
+Let *n* be the input size in bytes and *k* the number of distinct byte values (at most 256).
 
-| Phase                 | Time              | Space   |
-|-----------------------|-------------------|---------|
-| Frequency counting    | O(n)              | O(k)    |
-| Tree construction     | O(k log k)        | O(k)    |
-| Encoding              | O(n)              | O(n)    |
-| Decoding              | O(n)              | O(n)    |
+| Phase                | Time                          | Space |
+|----------------------|-------------------------------|-------|
+| Frequency counting   | O(n)                          | O(k)  |
+| Tree construction    | O(k² log k) worst case        | O(k)  |
+| Encoding             | O(n)                          | O(k)  |
+| Decoding             | O(total encoded bits)         | O(k)  |
 
-Since *k* is bounded by 256, tree construction is effectively constant time. Overall runtime is linear in file size.
+Because *k* is capped at 256, tree construction is negligible in practice and runtime is dominated by file I/O.
 
-## Testing
+## Known Limitations
 
-```bash
-cd build
-ctest --output-on-failure
-```
-
-The test suite covers:
-
-- Round-trip correctness on text and binary files
-- Empty file
-- Single-byte and single-repeated-symbol files (tree with one node)
-- Files where all 256 byte values appear
-- Large files (multi-MB)
-- Corrupted or truncated input (expects a clean error, not a crash)
-
-## Limitations
-
-- **Small files may grow.** The frequency table adds overhead, so files under a few hundred bytes can end up larger after compression.
-- **Already-compressed data** (ZIP, JPEG, MP4) gains little or nothing, since its byte distribution is near uniform.
-- **Whole-file model.** The entire file is read into memory and a single tree is used. Very large files may need a streaming or block-based approach.
-- Compression ratio is lower than modern algorithms (DEFLATE, Zstandard, LZMA) because Huffman coding alone does not exploit repeated sequences.
+- **Empty files are not supported.** An empty input leaves the tree builder with no nodes.
+- **Small files can grow.** The header adds overhead, so tiny files may end up larger than the original.
+- **Already-compressed data** (ZIP, JPEG, MP4, etc.) will see little to no reduction because its byte distribution is nearly uniform.
+- **Path handling in decompression.** The `output` prefix is added to the entire path argument, so run the tool from the file's directory.
+- **No integrity checks.** There is no magic number or checksum, so a corrupted or non-`.abiz` file is not detected gracefully.
+- **Unbuffered per-byte I/O** (`fgetc` / `fputc`) limits throughput on very large files.
+- **Tree nodes are not freed.** This is harmless for a short-lived CLI process but worth addressing if the code is reused as a library.
 
 ## Roadmap
 
-- [ ] Canonical Huffman codes to shrink the header
-- [ ] Block-based / streaming compression for large files
-- [ ] Multi-file and directory support
-- [ ] Checksum (CRC32) for integrity verification
-- [ ] Benchmark suite against gzip and zstd
-- [ ] Multithreaded frequency counting
+- [ ] Replace the sorted vector with `std::priority_queue` for tree construction
+- [ ] Add a magic number and CRC32 checksum to detect invalid or corrupted files
+- [ ] Support empty files
+- [ ] Pack codes in the header as bits (or use canonical Huffman codes) to reduce header size
+- [ ] Use buffered block I/O for faster processing of large files
+- [ ] Let the user choose the output file name and path
+- [ ] Release tree memory and split the code into headers and source files
+- [ ] Add automated round-trip tests and a benchmark against gzip
 
 ## Contributing
 
-Contributions are welcome.
+Contributions and suggestions are welcome.
 
 1. Fork the repository
 2. Create a feature branch: `git checkout -b feature/your-feature`
-3. Commit your changes with clear messages
-4. Ensure all tests pass
-5. Open a pull request describing the problem and your solution
+3. Commit your changes with a clear message
+4. Push the branch and open a pull request describing the problem and the fix
 
-Please follow the existing code style and add tests for new behavior.
+## Author
 
-## License
-
-Distributed under the MIT License. See [`LICENSE`](LICENSE) for details.
-
-## Acknowledgments
-
-- D. A. Huffman, *"A Method for the Construction of Minimum-Redundancy Codes"* (1952)
-- *Introduction to Algorithms* (CLRS), Chapter 16: Greedy Algorithms
+**Sumit Dutta**: [@SumitDutta007](https://github.com/SumitDutta007)
